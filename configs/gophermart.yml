@@ -1,0 +1,12 @@
+server:
+  address: :80
+
+database:
+  dsn: "postgres://user:password@postgres/gophermart?sslmode=disable"
+
+accrual:
+  service:
+    address: http://accrual
+  queue:
+    dsn: "amqp://guest:guest@rabbitmq:5672"
+  pool_interval: 1

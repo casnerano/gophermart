@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  gophermart:
+    ports:
+      - '8181:80'
+
+  accrual:
+    ports:
+      - '8282:80'
+
+  postgres:
+    ports:
+      - '5432:5432'
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: pgadmin
+    restart: always
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=gopher@mart.loc
+      - PGADMIN_DEFAULT_PASSWORD=password
+    ports:
+      - '9090:80'
+    networks:
+      - internal
