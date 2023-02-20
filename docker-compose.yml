@@ -11,6 +11,7 @@ services:
       - ./web:/var/www/gophermart:ro
     depends_on:
       - gophermart
+      - accrual
     networks:
       - internal
 
@@ -24,8 +25,11 @@ services:
       - POSTGRES_PASSWORD
       - POSTGRES_DB
     depends_on:
-      - accrual
-      - rabbitmq
+      accrual:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
     networks:
       - internal
 
@@ -56,6 +60,11 @@ services:
     image: rabbitmq:3-management-alpine
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 5s
+      timeout: 15s
+      retries: 5
     networks:
       - internal
     ports:
