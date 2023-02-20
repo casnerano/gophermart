@@ -7,16 +7,12 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/go-chi/chi/v5"
-	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-resty/resty/v2"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	cfg "github.com/casnerano/yandex-gophermart/internal/config"
 	"github.com/casnerano/yandex-gophermart/internal/repository/pgsql"
 	srv "github.com/casnerano/yandex-gophermart/internal/server"
-	"github.com/casnerano/yandex-gophermart/internal/server/handler"
-	"github.com/casnerano/yandex-gophermart/internal/server/middleware"
 	"github.com/casnerano/yandex-gophermart/internal/service/account"
 	"github.com/casnerano/yandex-gophermart/internal/service/accrual"
 	"github.com/casnerano/yandex-gophermart/internal/service/balance"
@@ -71,56 +67,23 @@ func main() {
 	}
 	defer rabbitmq.Close()
 
-	// Account dependencies
+	// Repositories
 	userRepository := pgsql.NewUserRepository(connection)
-	accountService := account.New(userRepository, config.App.Secret)
-	accountHandler := handler.NewAccount(accountService, logger)
-
-	// Order dependencies
 	orderRepository := pgsql.NewOrderRepository(connection)
-	orderService := order.New(orderRepository, rabbitmq)
-	orderHandler := handler.NewOrder(orderService, logger)
-
-	// Balance dependencies
 	withdrawRepository := pgsql.NewWithdrawRepository(connection)
-	balanceService := balance.New(userRepository, withdrawRepository)
-	balanceHandler := handler.NewBalance(balanceService, logger)
 
-	// Withdraw dependencies
-	withdrawService := withdraw.New(userRepository, withdrawRepository)
-	withdrawHandler := handler.NewWithdraw(withdrawService, logger)
-
-	// Router
-	router := chi.NewRouter()
-
-	router.Use(chiMiddleware.RequestID)
-	router.Use(chiMiddleware.Recoverer)
-	router.Use(middleware.JSONContentType)
-
-	// Public routes
-	router.Group(func(r chi.Router) {
-		r.Post("/user/register", accountHandler.SignUp())
-		r.Post("/user/login", accountHandler.SignIn())
-	})
-
-	// Protected routes
-	router.Group(func(r chi.Router) {
-		r.Use(middleware.JWTAuthenticator(config.App.Secret))
-		r.Post("/user/orders", orderHandler.PostUserOrder())
-		r.Get("/user/orders", orderHandler.GetUserOrders())
-		r.Get("/user/balance", balanceHandler.GetUserSummary())
-		r.Post("/user/balance/withdraw", withdrawHandler.PostUserBalanceWithdraw())
-		r.Get("/user/withdrawals", withdrawHandler.GetUserWithdrawals())
-	})
-
-	router.Mount("/api", router)
+	// Services
+	sAccount := account.New(userRepository, config.App.Secret)
+	sOrder := order.New(orderRepository, rabbitmq)
+	sBalance := balance.New(userRepository, withdrawRepository)
+	sWithdraw := withdraw.New(userRepository, withdrawRepository)
 
 	// Initialization accrual system client
 	orderObserver := accrual.NewObserver(
 		resty.New(),
 		config.Accrual.Service.Address,
 		config.Accrual.PoolInterval,
-		orderService,
+		sOrder,
 		logger,
 	)
 
@@ -133,6 +96,15 @@ func main() {
 	workerManager.StartWorker(context.Background())
 
 	// Starting server and wait signal for graceful shutdown
+	router := srv.NewRouter(
+		sAccount,
+		sOrder,
+		sBalance,
+		sWithdraw,
+		config.App.Secret,
+		logger,
+	)
+
 	server := srv.New(config.Server.Address, router, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
