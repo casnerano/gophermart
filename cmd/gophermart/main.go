@@ -27,7 +27,8 @@ func main() {
 	// Init configuration
 	config, err := cfg.New()
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 
 	// Init logger
