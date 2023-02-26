@@ -1,0 +1,81 @@
+version: '3.8'
+
+services:
+  nginx:
+    build: ./build/nginx
+    restart: always
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./web:/var/www/gophermart:ro
+    depends_on:
+      - gophermart
+      - accrual
+    networks:
+      - internal
+
+  gophermart:
+    build:
+      dockerfile: ./build/gophermart/Dockerfile
+      context: ./
+    environment:
+      - APP_ENV
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_DB
+    depends_on:
+      accrual:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+
+    networks:
+      - internal
+
+  accrual:
+    build:
+      dockerfile: ./build/accrual/Dockerfile
+      context: ./
+    environment:
+      - RUN_ADDRESS=:80
+    depends_on:
+      - postgres
+    networks:
+      - internal
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: rabbitmq-diagnostics check_port_connectivity
+      interval: 5s
+      timeout: 15s
+      retries: 5
+    networks:
+      - internal
+    ports:
+      - '15672:15672'
+
+volumes:
+  postgres-data:
+    driver: local
+  rabbitmq-data:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
